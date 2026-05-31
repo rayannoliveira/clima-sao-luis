@@ -1,309 +1,362 @@
-# Projeto PySpark - Clima de São Luís
+# Projeto ETL Clima São Luís
 
-## Visão Geral
-
-Este projeto consome dados da API Open-Meteo e processa as informações utilizando PySpark, seguindo a arquitetura Medalhão (Medallion Architecture) composta pelas camadas Bronze, Silver e Gold.
-
-O objetivo é demonstrar conceitos de Engenharia de Dados como ingestão de APIs, processamento distribuído com Spark, transformação de dados e organização em camadas analíticas.
+Projeto de Engenharia de Dados desenvolvido com Python, PySpark, PostgreSQL, Docker e Apache Airflow para consumo de dados meteorológicos da API Open-Meteo, seguindo a arquitetura Medalhão (Bronze, Silver e Gold).
 
 ---
 
-## Objetivo
+# Objetivo
 
-Coletar dados climáticos de São Luís - MA através da API Open-Meteo, armazenar os dados brutos e gerar informações tratadas para análise de temperatura e condições climáticas.
-
----
-
-## Tecnologias Utilizadas
-
-* Python 3.9+
-* PySpark
-* Apache Spark
-* Open-Meteo API
-* Docker (opcional)
-* Git
+O objetivo deste projeto é coletar dados climáticos da cidade de São Luís - MA através da API Open-Meteo, armazenar os dados brutos, realizar transformações e gerar informações analíticas para consulta e monitoramento.
 
 ---
 
-## Pré-requisitos
+# Tecnologias Utilizadas
 
-Antes de executar o projeto, certifique-se de possuir:
-
-### 1. Git
-
-Instalação:
-
-https://git-scm.com/downloads
-
-Verificar instalação:
-
-```bash
-git --version
-```
-
-### 2. Python 3.9+
-
-Verificar versão:
-
-```bash
-python --version
-```
-
-ou
-
-```bash
-py --version
-```
-
-### 3. Pip
-
-Verificar:
-
-```bash
-pip --version
-```
-
-### 4. Java
-
-O Spark depende do Java.
-
-Verificar instalação:
-
-```bash
-java -version
-```
-
-Recomendado:
-
-* Java 11
-* Java 17
-
-### 5. Apache Spark / PySpark
-
-Instalar PySpark:
-
-```bash
-pip install pyspark
-```
-
-Verificar:
-
-```bash
-pip show pyspark
-```
-
-### 6. Docker (Opcional)
-
-O Docker pode ser utilizado para executar aplicações em containers.
-
-Verificar instalação:
-
-```bash
-docker --version
-```
-
-Verificar se o daemon está rodando:
-
-```bash
-docker ps
-```
-
-Se o comando retornar uma tabela (mesmo vazia), o Docker está funcionando corretamente.
+- Python 3.11
+- PySpark
+- PostgreSQL
+- Apache Airflow
+- Docker
+- Docker Compose
+- Open-Meteo API
+- Git
 
 ---
 
-## Fonte dos Dados
+# Fonte dos Dados
 
 API utilizada:
 
-https://api.open-meteo.com
+https://open-meteo.com/
 
-Endpoint utilizado:
+Endpoint:
 
 ```text
-https://api.open-meteo.com/v1/forecast?latitude=-2.5297&longitude=-44.3028&hourly=temperature_2m,weather_code
+https://api.open-meteo.com/v1/forecast
+```
+
+Dados coletados:
+
+- Data e hora da medição
+- Temperatura
+- Código meteorológico
+- Descrição meteorológica
+
+---
+
+# Arquitetura Medalhão
+
+```text
+Open-Meteo API
+        │
+        ▼
+    Bronze
+(JSON bruto)
+        │
+        ▼
+    Silver
+(Dados tratados)
+        │
+        ▼
+     Gold
+(Métricas diárias)
+        │
+        ▼
+ PostgreSQL
+        │
+        ▼
+ Apache Airflow
+(Orquestração)
 ```
 
 ---
 
-## Dados Coletados
+# Camada Bronze
 
-A API retorna:
-
-| Campo          | Descrição                    |
-| -------------- | ---------------------------- |
-| time           | Data e hora da medição       |
-| temperature_2m | Temperatura em °C            |
-| weather_code   | Código da condição climática |
-
----
-
-## Arquitetura Medalhão
-
-### Bronze
-
-Camada responsável por armazenar os dados brutos exatamente como recebidos da API.
+A camada Bronze é responsável por armazenar os dados brutos retornados pela API sem qualquer transformação.
 
 Exemplo:
 
-```text
-data/bronze/weather_raw/open_meteo_raw.json
+```json
+{
+  "time": "2026-06-01T00:00",
+  "temperature_2m": 26.5,
+  "weather_code": 3
+}
 ```
 
-Características:
+Local de armazenamento:
 
-* Sem transformações
-* Fonte histórica
-* Permite reprocessamento
+```text
+data/bronze/weather_raw/
+```
 
 ---
 
-### Silver
+# Camada Silver
 
-Camada de limpeza e enriquecimento.
+A camada Silver realiza o tratamento e enriquecimento dos dados.
 
 Transformações realizadas:
 
-* Conversão de timestamp
-* Tradução dos códigos climáticos
-* Padronização dos tipos de dados
+- Conversão dos timestamps
+- Tradução dos códigos meteorológicos
+- Padronização dos dados
+- Inclusão da data de extração
+- Preparação para análise
+
+Estrutura:
+
+| timestamp | temperature | weather_code | weather_description | extraction_date |
+|------------|------------|------------|------------|------------|
+| 2026-06-01 10:00 | 30.1 | 0 | Céu limpo | 2026-05-31 |
 
 Exemplo:
 
-| timestamp        | temperature | weather_description |
-| ---------------- | ----------- | ------------------- |
-| 2026-05-29 10:00 | 30.1        | Céu limpo           |
+```python
+.withColumn(
+    "extraction_date",
+    current_date()
+)
+```
 
 ---
 
-### Gold
+# Camada Gold
 
-Camada analítica.
+A camada Gold contém métricas prontas para consumo.
 
 Agregações realizadas:
 
-* Temperatura média diária
-* Temperatura máxima diária
-* Temperatura mínima diária
+- Temperatura média diária
+- Temperatura máxima diária
+- Temperatura mínima diária
+- Histórico das previsões por data de extração
 
-Exemplo:
+Estrutura:
 
-| data       | temp_media | temp_max | temp_min |
-| ---------- | ---------- | -------- | -------- |
-| 2026-05-29 | 30.2       | 33.1     | 27.8     |
+| forecast_date | extraction_date | avg_temperature | max_temperature | min_temperature |
+|---------------|----------------|-----------------|-----------------|-----------------|
+| 2026-06-05 | 2026-05-30 | 26.1 | 29.5 | 24.2 |
+
+Exemplo de cálculo:
+
+```python
+.groupBy(
+    "forecast_date",
+    "extraction_date"
+)
+.agg(
+    avg("temperature").alias("avg_temperature"),
+    max("temperature").alias("max_temperature"),
+    min("temperature").alias("min_temperature")
+)
+```
 
 ---
 
-## Estrutura do Projeto
+# Estrutura do Projeto
 
 ```text
-projeto-clima/
+clima-sao-luis/
 
-├── data/
-│   ├── bronze/
-│   ├── silver/
-│   └── gold/
+├── dags/
+│   └── clima_dag.py
 │
 ├── src/
 │   ├── extract.py
 │   ├── transform.py
-│   └── load.py
+│   ├── load.py
+│   └── pipeline.py
 │
-├── main.py
+├── data/
+│   └── bronze/
 │
+├── docker-compose.yml
+├── Dockerfile.airflow
 ├── requirements.txt
-│
 └── README.md
 ```
 
 ---
 
-## Fluxo do Pipeline
+# PostgreSQL
 
-1. Consumir dados da API Open-Meteo.
-2. Armazenar resposta bruta na camada Bronze.
-3. Ler dados com PySpark.
-4. Traduzir códigos meteorológicos.
-5. Criar camada Silver tratada.
-6. Gerar métricas agregadas.
-7. Salvar resultados na camada Gold.
+Os dados processados são armazenados em PostgreSQL.
+
+Banco:
+
+```text
+clima_db
+```
+
+Tabelas:
+
+```text
+silver_weather
+gold_weather_daily
+```
+
+Exemplos de consultas:
+
+```sql
+SELECT * FROM silver_weather LIMIT 10;
+
+SELECT * FROM gold_weather_daily LIMIT 10;
+```
+
+Contagem de registros:
+
+```sql
+SELECT COUNT(*) FROM silver_weather;
+
+SELECT COUNT(*) FROM gold_weather_daily;
+```
 
 ---
 
-## Executando o Projeto
+# Docker
 
-Instalar dependências:
+## Construir e iniciar containers
+
+```bash
+docker compose up --build -d
+```
+
+## Parar containers
+
+```bash
+docker compose down
+```
+
+## Visualizar containers
+
+```bash
+docker ps
+```
+
+## Visualizar logs
+
+```bash
+docker logs airflow-clima
+
+docker logs postgres-climas
+```
+
+---
+
+# Apache Airflow
+
+O Apache Airflow é responsável pela orquestração do pipeline.
+
+Fluxo executado:
+
+1. Extração dos dados da API
+2. Criação da camada Bronze
+3. Transformação para Silver
+4. Criação da camada Gold
+5. Escrita no PostgreSQL
+
+Arquivo da DAG:
+
+```text
+dags/clima_dag.py
+```
+
+Acesso à interface:
+
+```text
+http://localhost:8080
+```
+
+Usuário:
+
+```text
+admin
+```
+
+Senha:
+
+```text
+admin123
+```
+
+---
+
+# Agendamento da DAG
+
+Exemplo para execução diária às 15h:
+
+```python
+schedule="0 15 * * *"
+```
+
+Formato Cron:
+
+```text
+┌──────── minuto
+│ ┌────── hora
+│ │ ┌──── dia do mês
+│ │ │ ┌── mês
+│ │ │ │ ┌ dia da semana
+│ │ │ │ │
+0 15 * * *
+```
+
+---
+
+# Como Executar Localmente
+
+## Criar ambiente virtual
+
+```bash
+python -m venv venv
+```
+
+## Ativar ambiente
+
+Windows:
+
+```bash
+venv\Scripts\activate
+```
+
+Linux:
+
+```bash
+source venv/bin/activate
+```
+
+## Instalar dependências
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Executar:
+## Executar pipeline
 
 ```bash
-python main.py
-```
-
-ou
-
-```bash
-spark-submit main.py
+python src/pipeline.py
 ```
 
 ---
 
-## Exemplo de Saída
+# Possíveis Evoluções
 
-### Silver
-
-```text
-+-------------------+-----------+---------------------+
-| timestamp         | temperature | weather_description |
-+-------------------+-----------+---------------------+
-| 2026-05-29 10:00  | 30.1      | Céu limpo           |
-+-------------------+-----------+---------------------+
-```
-
-### Gold
-
-```text
-+----------+-----------+----------+----------+
-| data     | temp_media| temp_max | temp_min |
-+----------+-----------+----------+----------+
-|2026-05-29|30.2       |33.1      |27.8      |
-+----------+-----------+----------+----------+
-```
+- Armazenamento em Parquet
+- Particionamento por data
+- Testes unitários
+- Integração com MinIO
+- Integração com Data Lake
+- Monitoramento com Prometheus
+- Dashboards com Grafana
+- Deploy em GCP
+- Deploy em AWS
 
 ---
 
-## Conceitos Demonstrados
-
-* Consumo de APIs REST
-* Engenharia de Dados
-* Apache Spark
-* PySpark DataFrames
-* UDFs
-* Arquitetura Medalhão
-* ETL/ELT
-* Processamento distribuído
-* Transformação de dados
-
----
-
-## Melhorias Futuras
-
-* Escrita em formato Parquet
-* Particionamento por data
-* Dockerização da aplicação
-* Integração com Airflow
-* Armazenamento em Data Lake
-* Monitoramento e logging
-* Testes automatizados
-
----
-
-## Autor
+# Autor
 
 Rayanne Oliveira
 
-Data Engineer
+Data Engineer | Python | PySpark | PostgreSQL | Airflow | Docker

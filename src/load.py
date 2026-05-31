@@ -26,15 +26,18 @@ def save_gold(df_gold):
 
 
 def save_to_postgres(df, table_name):
-    jdbc_url = "jdbc:postgresql://localhost:5432/clima_db"
+    jdbc_url = os.getenv(
+        "POSTGRES_JDBC_URL",
+        "jdbc:postgresql://localhost:5432/clima_db?sslmode=disable"
+    )
 
     connection_properties = {
-        "user": "admin",
-        "password": "123456",
+        "user": os.getenv("POSTGRES_USER", "admin"),
+        "password": os.getenv("POSTGRES_PASSWORD", "123456"),
         "driver": "org.postgresql.Driver"
     }
 
-    df.write.mode("overwrite").jdbc(
+    df.write.mode("append").jdbc(
         url=jdbc_url,
         table=table_name,
         properties=connection_properties

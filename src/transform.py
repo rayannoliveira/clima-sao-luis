@@ -1,6 +1,6 @@
 from itertools import chain
 
-from pyspark.sql.functions import col, to_date, avg, max, min, create_map, lit
+from pyspark.sql.functions import col, to_date, avg, max, min, create_map, lit, current_date
 
 
 weather_codes = {
@@ -37,22 +37,42 @@ def create_silver(spark, data):
         [lit(x) for x in chain(*weather_codes.items())]
     )
 
-    df_silver = df.withColumn(
-        "weather_description",
-        mapping_expr[col("weather_code")]
+    df_silver = (
+        df
+        .withColumn(
+            "weather_description",
+            mapping_expr[col("weather_code")]
+        )
+        .withColumn(
+            "extraction_date",
+            current_date()
+        )
     )
 
     return df_silver
 
 
 def create_gold(df_silver):
-    df_gold = df_silver.withColumn(
-        "date",
-        to_date(col("timestamp"))
-    ).groupBy("date").agg(
-        avg("temperature").alias("avg_temperature"),
-        max("temperature").alias("max_temperature"),
-        min("temperature").alias("min_temperature")
+
+    df_gold = (
+        df_silver
+        .withColumn(
+            "forecast_date",
+            to_date(col("timestamp"))
+        )
+        .groupBy(
+            "forecast_date",
+            "extraction_date"
+        )
+        .agg(
+            avg("temperature").alias("avg_temperature"),
+            max("temperature").alias("max_temperature"),
+            min("temperature").alias("min_temperature")
+        )
+        .orderBy(
+            "forecast_date",
+            "extraction_date"
+        )
     )
 
     return df_gold
